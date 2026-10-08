@@ -17,6 +17,28 @@ This project implements activity monitoring for a smart office entrance using CP
 - requirements.txt 
   Python dependencies.
 
+- sensor_monitoring.xml
+  Executable CPEE process model containing the workflow logic, data elements, and service endpoint configuration.
+
+- sensor_monitoring.svg
+  Visual representation of the CPEE sensor-monitoring workflow.
+
+## Running It
+
+Connect the sensor wires as follows:
+
+- Brown (`VCC`): power supply
+- Blue (`GND`): ground
+- Black (`OUT`): `CS0` pin on the CH341A SPI header
+
+Set the CH341A board jumpers to `3.3 V`, then install the dependencies and start the service:
+
+```bash
+brew install libusb            # macOS
+pip install flask pyusb
+python3 sensor_service.py      # listens on port 5050
+```
+
 ## Main API Endpoints
 
 `GET /sensor/status`
@@ -25,6 +47,15 @@ Returns the current sensor state.
 
 Example:
 /sensor/status
+
+Example response:
+
+```json
+{
+  "detected": false,
+  "raw": "0xff"
+}
+```
 
 `GET /events`
 
@@ -38,6 +69,24 @@ The endpoint can optionally be restricted to a time interval using the query par
 Example:
 /events?since=2026-10-08T09:00:00&until=2026-10-08T18:00:00
 
+Example response:
+
+```json
+{
+  "since": "2026-10-08T09:00:00",
+  "until": "2026-10-08T18:00:00",
+  "count": 1,
+  "events": [
+    {
+      "start_time": "2026-10-08T10:15:30.100000",
+      "end_time": "2026-10-08T10:15:31.600000",
+      "duration_seconds": 1.5,
+      "classification": "quick_pass"
+    }
+  ]
+}
+```
+
 This is used by the CPEE workflow to count and inspect events within the current monitoring window.
 
 `GET /events/latest`
@@ -45,6 +94,17 @@ This is used by the CPEE workflow to count and inspect events within the current
 Returns information about the latest recorded event.
 
 The result is used by the workflow to determine the latest event classification and its duration.
+
+Example response:
+
+```json
+{
+  "start_time": "2026-10-08T10:15:30.100000",
+  "end_time": "2026-10-08T10:15:31.600000",
+  "duration_seconds": 1.5,
+  "classification": "quick_pass"
+}
+```
 
 ## Dashboard
 
@@ -72,3 +132,19 @@ https://cpee.org/out/frames/sensor_monitoring/
    Classification of the latest event, for example `dwell` or `quick_pass`.
 7. `dwell_duration`  
    Duration of the latest detected event.
+
+## Process Logic
+
+1. The workflow initializes the dashboard and creates the first monitoring window. `filter_since` is set to 60 seconds before the current time, while `started` records the process start time.
+
+2. While `loop_active` is `true`, the workflow retrieves the current detection state from `GET /sensor/status`.
+
+3. The current time is stored as `filter_until`. The workflow then calls `GET /events` with `filter_since` and `filter_until` to retrieve the events that started within this monitoring window.
+
+4. The returned event count is evaluated. Fewer than five events are classified as `normal` activity; five or more events are classified as `abnormal`.
+
+5. The workflow calls `GET /events/latest` and reads the latest event's classification and duration. An event lasting less than two seconds is classified by the sensor service as a `quick_pass`; an event lasting at least two seconds is classified as a `dwell`.
+
+6. The monitoring window, event count, activity status, latest-event classification, and duration are published to the CPEE Frames dashboard.
+
+7. The workflow waits for 30 seconds, sets `filter_since` to the previous `filter_until`, and begins the next monitoring cycle. This creates consecutive, non-overlapping monitoring windows.
