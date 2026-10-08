@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Sensor Monitoring Dashboard</title>
+</head>
+
+<body>
+
+<h2>Current Monitoring Data</h2>
+
+<p>Started: <strong id="started">waiting...</strong></p>
+<p>Filter Since: <strong id="filter_since">waiting...</strong></p>
+<p>Filter Until: <strong id="filter_until">waiting...</strong></p>
+<p>Filtered Count: <strong id="filtered_count">waiting...</strong></p>
+<p>Activity Status: <strong id="activity_status">waiting...</strong></p>
+<p>Dwell Classification: <strong id="dwell_classification">waiting...</strong></p>
+<p>Dwell Duration: <strong id="dwell_duration">waiting...</strong></p>
+
+<script>
+async function updateDashboard() {
+  try {
+    const response = await fetch(
+      "https://cpee.org/out/frames/sensor_monitoring/frames.json",
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+
+    const json = await response.json();
+
+    const frame = json.data.find(item =>
+      item.url &&
+      item.url.includes("dashboard.html")
+    );
+
+    if (!frame || !frame.default) {
+      throw new Error("Dashboard frame data not found");
+    }
+
+    const data = frame.default;
+
+    document.getElementById("started").textContent =
+      data.started ?? "not provided";
+
+    document.getElementById("filter_since").textContent =
+      data.filter_since ?? "not provided";
+
+    document.getElementById("filter_until").textContent =
+      data.filter_until ?? "not provided";
+
+    document.getElementById("filtered_count").textContent =
+      data.filtered_count ?? "not provided";
+
+    document.getElementById("activity_status").textContent =
+      data.activity_status ?? "not provided";
+
+    document.getElementById("dwell_classification").textContent =
+      data.dwell_classification ?? "not provided";
+
+    document.getElementById("dwell_duration").textContent =
+      data.dwell_duration ?? "not provided";
+
+  } catch (error) {
+    console.error("Failed to load dashboard data:", error);
+  }
+}
+
+updateDashboard();
+
+setInterval(updateDashboard, 5000);
+</script>
+
+</body>
+</html>
